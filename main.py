@@ -4,6 +4,7 @@
 import time
 import json
 from typing import Iterator, List, Tuple
+import numpy as np
 import tensorflow as tf
 from models import (
     TextRNN, 
@@ -28,8 +29,8 @@ def train_loop(
     Main model training loop
     """
 
-    train_data = dm.batched_dataset('train')
-    val_data = dm.batched_dataset('val')
+    # val_loss_curve only applicable for experiment mode
+    val_loss_curve = dict(loss=[], acc=[], auc=[]) 
 
     for epoch in range(1, epochs + 1):
         t = time.time()
@@ -37,20 +38,18 @@ def train_loop(
         # training phase
         for step, (batch, labels) in enumerate(dm.batched_dataset('train')):
 
-            step = tf.constant(step)
             x_train = tf.convert_to_tensor(batch, dtype=tf.int32)
             y_train = tf.convert_to_tensor(labels, dtype=tf.int32)
 
-            train_loss = train_step(step, x_train, y_train)
+            train_loss = train_step(x_train, y_train)
 
         # validation phase
         for step, (batch, labels) in enumerate(dm.batched_dataset('val')):
 
-            step = tf.constant(step)
             x_val = tf.convert_to_tensor(batch, dtype=tf.int32)
             y_val = tf.convert_to_tensor(labels, dtype=tf.int32)
 
-            val_loss = val_step(step, x_val, y_val)
+            val_loss = val_step(x_val, y_val)
 
         # metrics
         with train_writer.as_default():
@@ -92,6 +91,11 @@ def train_loop(
             metrics['val']['auc'].result()
         ))
 
+        if experiment_mode:
+            val_loss_curve['loss'].append(val_loss.numpy())
+            val_loss_curve['acc'].append(metrics['val']['acc'].result().numpy())
+            val_loss_curve['auc'].append(metrics['val']['auc'].result().numpy())
+
         for phase in ['train', 'val']:
             for metric in metrics[phase].keys():
                 metrics[phase][metric].reset_state()
@@ -103,12 +107,10 @@ def train_loop(
                 nn.save_weights(f"./checkpoints/{model_id}_epoch{epoch}.h5")
 
     if experiment_mode:
-        return # stats
-    else:
-        return nn
+        return val_loss_curve
 
 @tf.function
-def train_step(step, x, y):
+def train_step(x, y):
     with tf.GradientTape() as tape:
         train_output, attention = nn(x, training=True)
         train_loss_value = loss_fn(y, train_output)
@@ -123,7 +125,7 @@ def train_step(step, x, y):
     return train_loss_value
 
 @tf.function
-def val_step(step, x, y):
+def val_step(x, y):
     val_output, attention = nn(x, training=False)
     val_loss_value = loss_fn(y, val_output)
     
@@ -132,6 +134,56 @@ def val_step(step, x, y):
         
     return val_loss_value
 
+@tf.function
+def test_step(x, y):
+    test_output, attention = nn(x, training=False)
+    test_loss_value = loss_fn(y, test_output)
+    
+    for metric in metrics['test'].keys():
+        metrics['test'][metric].update_state(y, test_output)
+
+    return test_loss_value, attention
+
+def eval(dm: DataManager):
+
+    """
+    Evaluate predictions from the test set
+    Return test metrics
+    """
+
+    for step, (batch, labels) in enumerate(dm.batched_dataset('test')):
+
+        x_test = tf.convert_to_tensor(batch, dtype=tf.int32)
+        y_test = tf.convert_to_tensor(labels, dtype=tf.int32)
+
+        test_loss, _ = test_step(x_test, y_test)
+
+    return test_loss.numpy()
+
+def predict(
+    model, 
+    token_sequences: list, 
+    sequence_max_len: int,
+    batch_size: int = 128):
+
+    """
+    Return class predictions and attention weights
+    """
+
+    pred = np.zeros_like(token_sequences)
+    att_weights = np.zeros(shape=(pred.shape[0], sequence_max_len))
+
+    for i in range(len(token_sequences)):
+
+        batch = tf.convert_to_tensor(
+            token_sequences[i * batch_size : (i + 1) * batch_size], 
+            dtype=tf.int32
+        )
+        output, attention  = model(batch, training=False)
+        pred[i * batch_size : (i + 1) * batch_size] = np.argmax(output, axis=1)
+        att_weights[i * batch_size : (i + 1) * batch_size, :] = attention
+
+    return pred, att_weights
 
 if __name__ == "__main__":
 
@@ -169,6 +221,10 @@ if __name__ == "__main__":
             acc=tf.keras.metrics.CategoricalAccuracy(name='acc'),
             auc=tf.keras.metrics.AUC(curve='ROC', name='roc-auc'),
         ),
+        test=dict(
+            acc=tf.keras.metrics.CategoricalAccuracy(name='acc'),
+            auc=tf.keras.metrics.AUC(curve='ROC', name='roc-auc'),
+        ),
     )
 
     train_writer = tf.summary.create_file_writer(f'./logs/train/')
@@ -176,6 +232,6 @@ if __name__ == "__main__":
 
     nn = TextRNN(config, len(dm.vocab))
     nn.build_graph()
-    train_loop(dm, model_id, 15, 0, False)
+    train_loop(dm, model_id, 5, 0, True)
     print("saving model weights...")
     nn.save_weights(f"./checkpoints/{model_id}.h5")

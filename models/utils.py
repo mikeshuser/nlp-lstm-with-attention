@@ -7,7 +7,7 @@ import multiprocessing as mp
 from typing import List, Tuple
 import spacy
 
-CPUS = mp.cpu_count() - 2
+CPUS = mp.cpu_count() - 1
 CONTRACTION_DICT = {
     "ain't" : "is not", 
     "aren't" : "are not",
