@@ -7,7 +7,7 @@
         "vocab_drop_threshold" : 2 
     },
     "dimensions" : {
-        "embedding_dim" : 80,
+        "embedding_dim" : 50,
         "recurrent_units" : 64,
         "linear_units" : [64]
     },
@@ -19,7 +19,7 @@
         "dropout_rate" : 0.2,
         "weights" : {
             "type" : "L2",
-            "rate" : 0.1
+            "lambda" : 0.01
         }
     }
 }

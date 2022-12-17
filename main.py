@@ -144,7 +144,7 @@ def test_step(x, y):
 
     return test_loss_value, attention
 
-def eval(dm: DataManager):
+def evaluate(dm: DataManager):
 
     """
     Evaluate predictions from the test set
@@ -227,11 +227,11 @@ if __name__ == "__main__":
         ),
     )
 
-    train_writer = tf.summary.create_file_writer(f'./logs/train/')
-    val_writer  = tf.summary.create_file_writer(f'./logs/val/')
+    train_writer = tf.summary.create_file_writer('./logs/train/')
+    val_writer  = tf.summary.create_file_writer('./logs/val/')
 
     nn = TextRNN(config, len(dm.vocab))
     nn.build_graph()
-    train_loop(dm, model_id, 5, 0, True)
+    train_loop(dm, model_id, 5, 0, False)
     print("saving model weights...")
     nn.save_weights(f"./checkpoints/{model_id}.h5")

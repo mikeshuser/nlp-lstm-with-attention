@@ -22,9 +22,9 @@ class TextRNN(tf.keras.Model):
         self.dropout_rate = config['regularizer']['dropout_rate']
         weight_reg = config['regularizer']['weights'] 
         if weight_reg["type"] == "L2":
-            self.regularizer = tf.keras.regularizers.L2(weight_reg["rate"])
+            self.regularizer = tf.keras.regularizers.L2(weight_reg["lambda"])
         elif weight_reg["type"] == "L1":
-            self.regularizer = tf.keras.regularizers.L1(weight_reg["rate"])
+            self.regularizer = tf.keras.regularizers.L1(weight_reg["lambda"])
 
         # model architecture
         self.embedding = tf.keras.layers.Embedding(
